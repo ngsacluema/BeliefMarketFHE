@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Redesigned BeliefMarket emblem: eye (belief/insight) + scale (market balance) -->
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B1016"/>
+      <stop offset="100%" stop-color="#0A0E14"/>
+    </linearGradient>
+    <linearGradient id="eye" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="100%" stop-color="#6D28D9"/>
+    </linearGradient>
+    <linearGradient id="scale" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2DD4BF"/>
+      <stop offset="100%" stop-color="#0D9488"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#8B5CF6" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#8B5CF6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="128" height="128" rx="16" ry="16" fill="url(#bg)"/>
+
+  <!-- Balanced scale (market fairness) -->
+  <g transform="translate(24,64)">
+    <path d="M8 0h72v4H8z" fill="url(#scale)"/>
+    <path d="M40 4v32" stroke="url(#scale)" stroke-width="4" stroke-linecap="round"/>
+    <path d="M16 36c0 8 8 12 24 12s24-4 24-12H16z" fill="url(#scale)" opacity="0.8"/>
+    <path d="M64 36c0 8-8 12-24 12s-24-4-24-12" fill="none" stroke="#0D9488" stroke-width="3"/>
+    <!-- Weights -->
+    <circle cx="28" cy="48" r="6" fill="#0D9488"/>
+    <circle cx="52" cy="48" r="6" fill="#0D9488"/>
+  </g>
+
+  <!-- Eye of providence (belief/insight) -->
+  <g transform="translate(40,20)">
+    <path d="M24 8c-12 0-24 8-24 24s12 24 24 24 24-8 24-24S36 8 24 8z" fill="url(#eye)"/>
+    <circle cx="24" cy="32" r="12" fill="white"/>
+    <circle cx="24" cy="32" r="6" fill="#1E293B"/>
+    <!-- Rays -->
+    <g fill="url(#glow)">
+      <rect x="22" y="0" width="4" height="8" rx="2"/>
+      <rect x="22" y="56" width="4" height="8" rx="2"/>
+      <rect x="0" y="30" width="8" height="4" rx="2"/>
+      <rect x="40" y="30" width="8" height="4" rx="2"/>
+      <rect x="6" y="6" width="4" height="4" rx="2" transform="rotate(45 8 8)"/>
+      <rect x="38" y="6" width="4" height="4" rx="2" transform="rotate(45 40 8)"/>
+      <rect x="6" y="54" width="4" height="4" rx="2" transform="rotate(45 8 56)"/>
+      <rect x="38" y="54" width="4" height="4" rx="2" transform="rotate(45 40 56)"/>
+    </g>
+  </g>
+
+  <!-- Accent ring -->
+  <rect x="6" y="6" width="116" height="116" rx="14" ry="14" fill="none" stroke="#8B5CF6" stroke-width="2" opacity="0.5"/>
+</svg>
+

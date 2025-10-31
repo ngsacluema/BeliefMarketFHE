@@ -1,7 +1,7 @@
 import { sepolia } from 'wagmi/chains';
 
 // BeliefMarketFHE Contract Address on Sepolia
-export const BELIEF_MARKET_ADDRESS = '0x0000000000000000000000000000000000000000' as const;
+export const BELIEF_MARKET_ADDRESS = '0x35B1c3E1208Cf716d1d3558F30aE5de48f5fe3B4' as const;
 
 export const BELIEF_MARKET_ABI = [
   {
@@ -18,8 +18,8 @@ export const BELIEF_MARKET_ABI = [
   {
     inputs: [
       { internalType: 'string', name: 'betId', type: 'string' },
-      { internalType: 'externalEuint64', name: 'encryptedWeight', type: 'bytes' },
       { internalType: 'uint8', name: 'voteType', type: 'uint8' },
+      { internalType: 'externalEuint64', name: 'encryptedWeight', type: 'bytes32' },
       { internalType: 'bytes', name: 'inputProof', type: 'bytes' },
     ],
     name: 'vote',

@@ -36,6 +36,9 @@ contract BeliefMarketFHE is SepoliaConfig {
     mapping(string => mapping(address => uint8)) internal userVoteType; // 0 = No, 1 = Yes
     mapping(string => mapping(address => bool)) internal hasClaimed;
 
+    // Array to store all bet IDs for enumeration
+    string[] private allBetIds;
+
     event BetCreated(string betId, address creator, uint256 stakeAmount, uint256 voteStake, uint256 expiryTime);
     event VoteCast(string betId);
     event BetResolved(string betId, bool yesWon, uint64 revealedYes, uint64 revealedNo, uint256 totalPrize);
@@ -106,14 +109,23 @@ contract BeliefMarketFHE is SepoliaConfig {
             decryptionRequestId: 0,
             revealPending: false
         });
+
+        // Grant the contract permission to operate on the tally ciphertexts
+        FHE.allowThis(bets[betId].yesVotes);
+        FHE.allowThis(bets[betId].noVotes);
+
+        // Add betId to the array for enumeration
+        allBetIds.push(betId);
+
         emit BetCreated(betId, msg.sender, msg.value, voteStake, block.timestamp + duration);
     }
 
-    // VoteType: 0 = No, 1 = Yes
+    // VoteType: 0 = No, 1 = Yes (plaintext for prize distribution)
+    // Weight is encrypted to hide vote strength
     function vote(
         string memory betId,
-        externalEuint64 encryptedWeight,
         uint8 voteType,
+        externalEuint64 encryptedWeight,
         bytes calldata inputProof
     ) external payable {
         BetInfo storage bet = bets[betId];
@@ -124,16 +136,17 @@ contract BeliefMarketFHE is SepoliaConfig {
         require(!hasVoted[betId][msg.sender], "Already voted");
         if (voteType > 1) revert InvalidVoteType();
 
+        // Decrypt encrypted weight using proof
         euint64 weight = FHE.fromExternal(encryptedWeight, inputProof);
-        uint64 expectedStake = uint64(bet.voteStake);
-        euint64 expectedWeight = FHE.asEuint64(expectedStake);
-        FHE.req(FHE.eq(weight, expectedWeight));
-        euint64 zero = FHE.asEuint64(0);
-        ebool isYes = FHE.eq(FHE.asEuint64(voteType), FHE.asEuint64(1));
-        ebool isNo = FHE.eq(FHE.asEuint64(voteType), FHE.asEuint64(0));
 
-        bet.yesVotes = FHE.add(bet.yesVotes, FHE.select(isYes, weight, zero));
-        bet.noVotes = FHE.add(bet.noVotes, FHE.select(isNo, weight, zero));
+        // Add weight to the appropriate vote pool based on plaintext voteType
+        if (voteType == 1) {
+            // Yes vote
+            bet.yesVotes = FHE.add(bet.yesVotes, weight);
+        } else {
+            // No vote
+            bet.noVotes = FHE.add(bet.noVotes, weight);
+        }
 
         FHE.allowThis(bet.yesVotes);
         FHE.allowThis(bet.noVotes);
@@ -263,7 +276,7 @@ contract BeliefMarketFHE is SepoliaConfig {
     // Get bet info (returns revealed tallies if resolved, otherwise 0)
     function getBet(string memory betId) external view returns (
         address creator,
-        uint256 platformStake,
+        uint256 creatorStake,
         uint256 voteStake,
         uint256 expiryTime,
         bool isResolved,
@@ -326,6 +339,16 @@ contract BeliefMarketFHE is SepoliaConfig {
     // Public getter for hasClaimed for frontend usage
     function hasUserClaimed(string memory betId, address user) public view returns (bool) {
         return hasClaimed[betId][user];
+    }
+
+    // Get all bet IDs
+    function getAllBetIds() external view returns (string[] memory) {
+        return allBetIds;
+    }
+
+    // Get total number of bets
+    function getBetCount() external view returns (uint256) {
+        return allBetIds.length;
     }
 
     receive() external payable {}

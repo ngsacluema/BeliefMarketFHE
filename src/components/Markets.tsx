@@ -1,40 +1,32 @@
 import { MarketCard } from './MarketCard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-
-const mockMarkets = [
-  {
-    betId: 'demo-eth-5000-2025',
-    title: 'Will ETH reach $5,000 by end of 2025?',
-    description: 'Predict whether Ethereum will reach or exceed $5,000 USD by December 31, 2025, based on major exchange prices.',
-    prizePool: '0 ETH',
-    participants: 0,
-    timeRemaining: 'Demo Market',
-    status: 'active' as const,
-  },
-  {
-    betId: 'demo-btc-halving-2028',
-    title: 'Will the next Bitcoin halving occur before May 2028?',
-    description: 'Binary prediction on the timing of the next Bitcoin block reward halving event.',
-    prizePool: '0 ETH',
-    participants: 0,
-    timeRemaining: 'Demo Market',
-    status: 'active' as const,
-  },
-  {
-    betId: 'demo-solana-tvl-q2',
-    title: 'Will Solana TVL exceed $10B in Q2 2025?',
-    description: 'Predict if Solana\'s Total Value Locked will surpass $10 billion during Q2 2025.',
-    prizePool: '0 ETH',
-    participants: 0,
-    timeRemaining: 'Demo Market',
-    status: 'counting' as const,
-  },
-];
+import { useMarkets } from '@/hooks/useMarkets';
+import { Loader2 } from 'lucide-react';
 
 export const Markets = () => {
-  const activeMarkets = mockMarkets.filter((m) => m.status === 'active');
-  const countingMarkets = mockMarkets.filter((m) => m.status === 'counting');
-  const completedMarkets = mockMarkets.filter((m) => m.status === 'completed');
+  const { markets, activeMarkets, countingMarkets, completedMarkets } = useMarkets();
+
+  if (markets.length === 0) {
+    return (
+      <section id="markets" className="py-20">
+        <div className="container">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold mb-4">Active Prediction Markets</h2>
+            <p className="text-muted-foreground max-w-2xl mx-auto">
+              Explore ongoing encrypted prediction markets. All votes remain private using FHE
+              until the official decryption callback.
+            </p>
+          </div>
+          <div className="flex justify-center items-center py-20">
+            <div className="text-center">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
+              <p className="text-muted-foreground">Loading markets from blockchain...</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section id="markets" className="py-20">
@@ -55,27 +47,45 @@ export const Markets = () => {
           </TabsList>
 
           <TabsContent value="active">
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {activeMarkets.map((market, index) => (
-                <MarketCard key={index} {...market} />
-              ))}
-            </div>
+            {activeMarkets.length > 0 ? (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {activeMarkets.map((market) => (
+                  <MarketCard key={market.betId} {...market} />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">No active markets at the moment</p>
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="counting">
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {countingMarkets.map((market, index) => (
-                <MarketCard key={index} {...market} />
-              ))}
-            </div>
+            {countingMarkets.length > 0 ? (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {countingMarkets.map((market) => (
+                  <MarketCard key={market.betId} {...market} />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">No markets in counting phase</p>
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="completed">
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {completedMarkets.map((market, index) => (
-                <MarketCard key={index} {...market} />
-              ))}
-            </div>
+            {completedMarkets.length > 0 ? (
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {completedMarkets.map((market) => (
+                  <MarketCard key={market.betId} {...market} />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">No completed markets yet</p>
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </div>

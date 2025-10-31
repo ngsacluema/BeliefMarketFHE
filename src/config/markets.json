@@ -1,0 +1,27 @@
+[
+  {
+    "betId": "btc-100k-2025",
+    "title": "Will Bitcoin reach $100,000 by end of 2025?",
+    "description": "Binary prediction on whether Bitcoin will surpass $100,000 USD by the end of 2025."
+  },
+  {
+    "betId": "eth-staking-20m-2025",
+    "title": "Will Ethereum staked ETH exceed 20M by Q4 2025?",
+    "description": "Predict if the total amount of staked ETH will surpass 20 million by Q4 2025."
+  },
+  {
+    "betId": "arbitrum-txs-1b-2025",
+    "title": "Will Arbitrum process 1B+ transactions in 2025?",
+    "description": "Predict whether Arbitrum will process over 1 billion transactions during 2025."
+  },
+  {
+    "betId": "base-mau-10m-2025",
+    "title": "Will Base reach 10M monthly active users by end of 2025?",
+    "description": "Predict if Base (Coinbase L2) will achieve 10 million monthly active users by December 31, 2025."
+  },
+  {
+    "betId": "uniswap-v4-launch-q2-2025",
+    "title": "Will Uniswap V4 launch before Q2 2025?",
+    "description": "Predict whether Uniswap V4 will officially launch on mainnet before the end of Q2 2025."
+  }
+]

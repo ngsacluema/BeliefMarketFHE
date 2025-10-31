@@ -36,6 +36,20 @@ export const HowItWorks = () => {
           </p>
         </div>
 
+        {/* Demo Video */}
+        <div className="mb-12 max-w-4xl mx-auto">
+          <div className="relative rounded-xl overflow-hidden border-2 border-primary/20 shadow-2xl bg-black">
+            <video
+              controls
+              className="w-full aspect-video"
+              poster="/favicon.svg"
+            >
+              <source src="/vedio.mp4" type="video/mp4" />
+              Your browser does not support the video tag.
+            </video>
+          </div>
+        </div>
+
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {steps.map((step, index) => (
             <Card key={index} className="relative border-2 hover:border-primary/50 transition-colors">

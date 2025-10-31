@@ -1,12 +1,11 @@
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { Shield } from 'lucide-react';
 
 export const Header = () => {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between">
         <div className="flex items-center gap-2">
-          <Shield className="h-8 w-8 text-primary" />
+          <img src="/favicon.svg" alt="BeliefMarket" className="h-8 w-8" />
           <span className="text-xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
             BeliefMarketFHE
           </span>

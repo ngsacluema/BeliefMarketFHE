@@ -164,8 +164,8 @@ export function useVote() {
 
   const vote = async (
     betId: string,
-    encryptedWeight: `0x${string}`,
     voteType: 0 | 1,
+    encryptedWeight: `0x${string}`,
     inputProof: `0x${string}`,
     voteStakeValue: bigint
   ) => {
@@ -173,7 +173,7 @@ export function useVote() {
       address: BELIEF_MARKET_ADDRESS,
       abi: BELIEF_MARKET_ABI,
       functionName: 'vote',
-      args: [betId, encryptedWeight, voteType, inputProof],
+      args: [betId, voteType, encryptedWeight, inputProof],
       value: voteStakeValue,
     });
   };

@@ -1,4 +1,4 @@
-import { Shield, Github, Twitter, MessageCircle } from 'lucide-react';
+import { Github, Twitter, MessageCircle } from 'lucide-react';
 
 export const Footer = () => {
   return (
@@ -7,7 +7,7 @@ export const Footer = () => {
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <div className="flex items-center gap-2 mb-4">
-              <Shield className="h-6 w-6 text-primary" />
+              <img src="/favicon.svg" alt="BeliefMarket" className="h-6 w-6" />
               <span className="font-bold">BeliefMarketFHE</span>
             </div>
             <p className="text-sm text-muted-foreground">
