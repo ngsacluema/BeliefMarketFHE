@@ -2,9 +2,14 @@
 pragma solidity ^0.8.24;
 
 import { FHE, externalEuint64, euint64, ebool } from "@fhevm/solidity/lib/FHE.sol";
-import { SepoliaConfig } from "@fhevm/solidity/config/ZamaConfig.sol";
+import { ZamaEthereumConfig } from "@fhevm/solidity/config/ZamaConfig.sol";
 
-contract BeliefMarketFHE is SepoliaConfig {
+/**
+ * @title BeliefMarketFHE
+ * @notice Privacy-preserving prediction market using Zama's FHE (fhEVM 0.9.1)
+ * @dev Uses self-relaying decryption pattern instead of Oracle-based decryption
+ */
+contract BeliefMarketFHE is ZamaEthereumConfig {
     struct BetInfo {
         address creator;
         uint256 platformStake;
@@ -17,8 +22,7 @@ contract BeliefMarketFHE is SepoliaConfig {
         uint64 revealedNo;
         uint256 prizePool;
         bool yesWon;
-        uint256 decryptionRequestId;
-        bool revealPending;
+        bool decryptionRequested;  // Changed from requestId to boolean flag
     }
 
     uint256 public platformStake = 0.02 ether;
@@ -28,8 +32,6 @@ contract BeliefMarketFHE is SepoliaConfig {
 
     mapping(string => BetInfo) private bets;
     mapping(string => mapping(address => bool)) public hasVoted;
-    mapping(string => bool) public callbackHasBeenCalled;
-    mapping(uint256 => string) internal betIdByRequestId;
     uint256 public platformFees;
     address public owner;
     bool public isTesting;
@@ -44,16 +46,13 @@ contract BeliefMarketFHE is SepoliaConfig {
     event BetResolved(string betId, bool yesWon, uint64 revealedYes, uint64 revealedNo, uint256 totalPrize);
     event PrizeDistributed(string betId, address winner, uint256 amount);
     event PlatformFeesWithdrawn(address indexed to, uint256 amount);
-    event WithdrawalPending(address indexed user, uint256 amount);
-    event TallyRevealRequested(string betId, uint256 requestId);
-    event DebugCallbackStep(string step, string betId);
-    event CallbackFlagSet(string betId);
+    event DecryptionRequested(string betId);
 
-    error RevealAlreadyPending();
-    error RevealNotPending();
+    error DecryptionAlreadyRequested();
+    error DecryptionNotRequested();
+    error DecryptionNotReady();
     error InvalidVoteStake();
     error InvalidVoteType();
-    error InvalidRevealRequest();
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Not owner");
@@ -106,8 +105,7 @@ contract BeliefMarketFHE is SepoliaConfig {
             revealedNo: 0,
             prizePool: 0,
             yesWon: false,
-            decryptionRequestId: 0,
-            revealPending: false
+            decryptionRequested: false
         });
 
         // Grant the contract permission to operate on the tally ciphertexts
@@ -157,59 +155,73 @@ contract BeliefMarketFHE is SepoliaConfig {
         emit VoteCast(betId);
     }
 
-    // Request decryption of tallies after expiry
+    /**
+     * @notice Request decryption of tallies after bet expiry (Step 1 of 0.9.1 flow)
+     * @dev Marks ciphertexts as publicly decryptable for off-chain relayer
+     */
     function requestTallyReveal(string memory betId) external {
         BetInfo storage bet = bets[betId];
         require(bet.creator != address(0), "Bet doesn't exist");
         require(block.timestamp >= bet.expiryTime, "Bet not expired");
         require(!bet.isResolved, "Already resolved");
         require(msg.sender == bet.creator, "Only creator can request reveal");
-        if (bet.revealPending) revert RevealAlreadyPending();
+        if (bet.decryptionRequested) revert DecryptionAlreadyRequested();
 
+        // Mark ciphertexts as publicly decryptable (0.9.1 self-relaying pattern)
+        bet.yesVotes = FHE.makePubliclyDecryptable(bet.yesVotes);
+        bet.noVotes = FHE.makePubliclyDecryptable(bet.noVotes);
+        bet.decryptionRequested = true;
+
+        emit DecryptionRequested(betId);
+    }
+
+    /**
+     * @notice Resolve the bet with decrypted values and proof (Step 2 of 0.9.1 flow)
+     * @dev Called by relayer/user with decrypted values and cryptographic proof
+     * @param betId The bet identifier
+     * @param revealedYes Decrypted yes vote count
+     * @param revealedNo Decrypted no vote count
+     * @param decryptionProof Cryptographic proof from relayer SDK
+     */
+    function resolveTally(
+        string memory betId,
+        uint64 revealedYes,
+        uint64 revealedNo,
+        bytes calldata decryptionProof
+    ) external {
+        BetInfo storage bet = bets[betId];
+        require(bet.creator != address(0), "Bet doesn't exist");
+        require(!bet.isResolved, "Already resolved");
+        if (!bet.decryptionRequested) revert DecryptionNotRequested();
+
+        // Verify the decryption is ready (ciphertexts are publicly decryptable)
+        if (!FHE.isPubliclyDecryptable(bet.yesVotes) || !FHE.isPubliclyDecryptable(bet.noVotes)) {
+            revert DecryptionNotReady();
+        }
+
+        // Prepare ciphertext handles for signature verification
         bytes32[] memory cts = new bytes32[](2);
         cts[0] = FHE.toBytes32(bet.yesVotes);
         cts[1] = FHE.toBytes32(bet.noVotes);
 
-        // In 0.8.0, requestDecryption still takes ciphertext handles and a callback
-        uint256 requestId = FHE.requestDecryption(cts, this.resolveTallyCallback.selector);
-        bet.decryptionRequestId = requestId;
-        bet.revealPending = true;
-        betIdByRequestId[requestId] = betId;
-        emit TallyRevealRequested(betId, requestId);
-    }
+        // Encode the claimed decrypted values
+        bytes memory cleartexts = abi.encode(revealedYes, revealedNo);
 
-    // Callback for decryption oracle (FHEVM 0.8.0 style)
-    // The relayer passes ABI-encoded cleartexts and a decryption proof
-    function resolveTallyCallback(
-        uint256 requestId,
-        bytes memory cleartexts,
-        bytes memory decryptionProof
-    ) external {
-        string memory betId = betIdByRequestId[requestId];
-        if (bytes(betId).length == 0) revert InvalidRevealRequest();
-        BetInfo storage bet = bets[betId];
-        if (!bet.revealPending) revert RevealNotPending();
+        // Verify the decryption proof using FHE.checkSignatures (0.9.1 API)
+        FHE.checkSignatures(cts, cleartexts, decryptionProof);
 
-        // Verify signatures against the request and provided cleartexts
-        FHE.checkSignatures(requestId, cleartexts, decryptionProof);
-
-        // Decode the cleartexts back into uint64 values [revealedYes, revealedNo]
-        (uint64 revealedYes, uint64 revealedNo) = abi.decode(cleartexts, (uint64, uint64));
-
+        // Update bet state with verified decrypted values
         bet.revealedYes = revealedYes;
         bet.revealedNo = revealedNo;
         bet.isResolved = true;
         bet.yesWon = revealedYes > revealedNo;
-        bet.revealPending = false;
-        callbackHasBeenCalled[betId] = true;
-        delete betIdByRequestId[requestId];
+
         emit BetResolved(betId, bet.yesWon, revealedYes, revealedNo, bet.prizePool);
     }
 
     function claimPrize(string memory betId) external {
         BetInfo storage bet = bets[betId];
         require(bet.isResolved, "Bet not resolved");
-        require(!bet.revealPending, "Reveal pending");
         require(!hasClaimed[betId][msg.sender], "Already claimed");
         require(hasVoted[betId][msg.sender], "Did not vote");
         require(bet.revealedYes != bet.revealedNo, "Tie, use claimRefund");
@@ -231,7 +243,6 @@ contract BeliefMarketFHE is SepoliaConfig {
     function claimRefund(string memory betId) external {
         BetInfo storage bet = bets[betId];
         require(bet.isResolved, "Bet not resolved");
-        require(!bet.revealPending, "Reveal pending");
         require(bet.revealedYes == bet.revealedNo, "Not a tie");
         require(hasVoted[betId][msg.sender], "Did not vote");
         require(!hasClaimed[betId][msg.sender], "Already claimed");
@@ -270,7 +281,6 @@ contract BeliefMarketFHE is SepoliaConfig {
         bet.revealedNo = revealedNo;
         bet.isResolved = true;
         bet.yesWon = revealedYes > revealedNo;
-        bet.revealPending = false;
     }
 
     // Get bet info (returns revealed tallies if resolved, otherwise 0)
@@ -299,41 +309,48 @@ contract BeliefMarketFHE is SepoliaConfig {
         );
     }
 
-    // Get decryption request ID for a bet
-    function getDecryptionRequestId(string memory betId) external view returns (uint256) {
-        return bets[betId].decryptionRequestId;
-    }
-
-    // Get reveal status for a bet
+    // Get reveal status for a bet (updated for 0.9.1)
     function getRevealStatus(string memory betId)
         external
         view
         returns (
             bool isResolved,
-            bool pending,
+            bool decryptionRequested,
             uint64 revealedYes,
             uint64 revealedNo,
-            uint256 decryptionRequestId
+            bool isDecryptable
         )
     {
         BetInfo storage bet = bets[betId];
+        bool decryptable = bet.decryptionRequested &&
+            FHE.isPubliclyDecryptable(bet.yesVotes) &&
+            FHE.isPubliclyDecryptable(bet.noVotes);
         return (
             bet.isResolved,
-            bet.revealPending,
+            bet.decryptionRequested,
             bet.revealedYes,
             bet.revealedNo,
-            bet.decryptionRequestId
+            decryptable
         );
     }
 
-    // Check if a reveal has been requested for a bet
-    function isRevealRequested(string memory betId) external view returns (bool) {
-        return bets[betId].decryptionRequestId != 0;
+    // Check if decryption has been requested for a bet
+    function isDecryptionRequested(string memory betId) external view returns (bool) {
+        return bets[betId].decryptionRequested;
     }
 
-    // Check if callback has been called for a bet
-    function isCallbackCalled(string memory betId) external view returns (bool) {
-        return callbackHasBeenCalled[betId];
+    // Check if ciphertexts are ready for decryption
+    function isReadyForDecryption(string memory betId) external view returns (bool) {
+        BetInfo storage bet = bets[betId];
+        if (!bet.decryptionRequested) return false;
+        return FHE.isPubliclyDecryptable(bet.yesVotes) && FHE.isPubliclyDecryptable(bet.noVotes);
+    }
+
+    // Get ciphertext handles for off-chain decryption (needed by relayer SDK)
+    function getCiphertextHandles(string memory betId) external view returns (bytes32 yesHandle, bytes32 noHandle) {
+        BetInfo storage bet = bets[betId];
+        require(bet.creator != address(0), "Bet doesn't exist");
+        return (FHE.toBytes32(bet.yesVotes), FHE.toBytes32(bet.noVotes));
     }
 
     // Public getter for hasClaimed for frontend usage
