@@ -18,10 +18,10 @@ export interface BetInfo {
 
 export interface RevealStatus {
   isResolved: boolean;
-  pending: boolean;
+  pending: boolean;  // decryptionRequested
   revealedYes: bigint;
   revealedNo: bigint;
-  decryptionRequestId: bigint;
+  isDecryptable: boolean;
 }
 
 // Hook to get platform stake
@@ -80,16 +80,16 @@ export function useRevealStatus(betId: string) {
     args: [betId],
   });
 
-  const revealStatus = data as [boolean, boolean, bigint, bigint, bigint] | undefined;
+  const revealStatus = data as [boolean, boolean, bigint, bigint, boolean] | undefined;
 
   return {
     revealStatus: revealStatus
       ? {
           isResolved: revealStatus[0],
-          pending: revealStatus[1],
+          pending: revealStatus[1],  // decryptionRequested
           revealedYes: revealStatus[2],
           revealedNo: revealStatus[3],
-          decryptionRequestId: revealStatus[4],
+          isDecryptable: revealStatus[4],
         }
       : undefined,
     isLoading,
@@ -144,6 +144,7 @@ export function useCreateBet() {
       functionName: 'createBet',
       args: [betId, parseEther(voteStake), BigInt(durationInSeconds)],
       value: platformStakeValue,
+      gas: BigInt(500000), // Explicit gas limit for FHE operations
     });
   };
 
@@ -175,6 +176,7 @@ export function useVote() {
       functionName: 'vote',
       args: [betId, voteType, encryptedWeight, inputProof],
       value: voteStakeValue,
+      gas: BigInt(1000000), // Higher gas limit for FHE encryption operations
     });
   };
 
