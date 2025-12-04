@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAccount } from 'wagmi';
 import {
   Dialog,
@@ -13,13 +13,11 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import {
   Clock,
-  Users,
   DollarSign,
   Lock,
   Unlock,
   Loader2,
   CheckCircle2,
-  AlertCircle,
   Trophy,
 } from 'lucide-react';
 import {
@@ -33,6 +31,12 @@ import {
 } from '@/hooks/useBeliefMarket';
 import { VoteModal } from './VoteModal';
 import { formatEther } from 'viem';
+import {
+  showTxSubmitted,
+  showTxSuccess,
+  showTxError,
+  showInfo,
+} from '@/lib/toast-utils';
 
 interface MarketDetailModalProps {
   open: boolean;
@@ -51,10 +55,44 @@ export const MarketDetailModal = ({ open, onOpenChange, betId, title }: MarketDe
   const { hasVoted, refetch: refetchHasVoted } = useHasVoted(betId, address);
   const { hasClaimed, refetch: refetchHasClaimed } = useHasClaimed(betId, address);
 
-  const { requestReveal, isPending: requestingReveal, isSuccess: revealRequested } = useRequestTallyReveal();
-  const { claimPrize, isPending: claiming, isSuccess: claimed } = useClaimPrize();
-  const { claimRefund, isPending: refunding, isSuccess: refunded } = useClaimRefund();
+  const {
+    requestReveal,
+    hash: revealHash,
+    isPending: requestingReveal,
+    isConfirming: confirmingReveal,
+    isSuccess: revealRequested,
+    error: revealError,
+  } = useRequestTallyReveal();
 
+  const {
+    claimPrize,
+    hash: claimHash,
+    isPending: claiming,
+    isConfirming: confirmingClaim,
+    isSuccess: claimed,
+    error: claimError,
+  } = useClaimPrize();
+
+  const {
+    claimRefund,
+    hash: refundHash,
+    isPending: refunding,
+    isConfirming: confirmingRefund,
+    isSuccess: refunded,
+    error: refundError,
+  } = useClaimRefund();
+
+  // Toast refs for each action
+  const revealToastRef = useRef<string | number | null>(null);
+  const claimToastRef = useRef<string | number | null>(null);
+  const refundToastRef = useRef<string | number | null>(null);
+
+  // Previous hash refs
+  const prevRevealHashRef = useRef<string | undefined>();
+  const prevClaimHashRef = useRef<string | undefined>();
+  const prevRefundHashRef = useRef<string | undefined>();
+
+  // Refresh data when modal opens
   useEffect(() => {
     if (open) {
       refetchBet();
@@ -63,6 +101,105 @@ export const MarketDetailModal = ({ open, onOpenChange, betId, title }: MarketDe
       refetchHasClaimed();
     }
   }, [open, refetchBet, refetchReveal, refetchHasVoted, refetchHasClaimed]);
+
+  // Handle reveal transaction
+  useEffect(() => {
+    if (revealHash && revealHash !== prevRevealHashRef.current) {
+      prevRevealHashRef.current = revealHash;
+      revealToastRef.current = showTxSubmitted(revealHash);
+    }
+  }, [revealHash]);
+
+  useEffect(() => {
+    if (revealRequested && revealHash) {
+      showTxSuccess(
+        'Decryption Requested!',
+        'The encrypted votes will be revealed soon.',
+        revealHash,
+        revealToastRef.current ?? undefined
+      );
+      revealToastRef.current = null;
+      refetchReveal();
+    }
+  }, [revealRequested, revealHash, refetchReveal]);
+
+  useEffect(() => {
+    if (revealError) {
+      showTxError(
+        'Decryption Request Failed',
+        revealError,
+        revealHash,
+        revealToastRef.current ?? undefined
+      );
+      revealToastRef.current = null;
+    }
+  }, [revealError, revealHash]);
+
+  // Handle claim prize transaction
+  useEffect(() => {
+    if (claimHash && claimHash !== prevClaimHashRef.current) {
+      prevClaimHashRef.current = claimHash;
+      claimToastRef.current = showTxSubmitted(claimHash);
+    }
+  }, [claimHash]);
+
+  useEffect(() => {
+    if (claimed && claimHash) {
+      showTxSuccess(
+        'Prize Claimed!',
+        'Your winnings have been sent to your wallet.',
+        claimHash,
+        claimToastRef.current ?? undefined
+      );
+      claimToastRef.current = null;
+      refetchHasClaimed();
+    }
+  }, [claimed, claimHash, refetchHasClaimed]);
+
+  useEffect(() => {
+    if (claimError) {
+      showTxError(
+        'Failed to Claim Prize',
+        claimError,
+        claimHash,
+        claimToastRef.current ?? undefined
+      );
+      claimToastRef.current = null;
+    }
+  }, [claimError, claimHash]);
+
+  // Handle refund transaction
+  useEffect(() => {
+    if (refundHash && refundHash !== prevRefundHashRef.current) {
+      prevRefundHashRef.current = refundHash;
+      refundToastRef.current = showTxSubmitted(refundHash);
+    }
+  }, [refundHash]);
+
+  useEffect(() => {
+    if (refunded && refundHash) {
+      showTxSuccess(
+        'Refund Claimed!',
+        'Your stake has been returned to your wallet.',
+        refundHash,
+        refundToastRef.current ?? undefined
+      );
+      refundToastRef.current = null;
+      refetchHasClaimed();
+    }
+  }, [refunded, refundHash, refetchHasClaimed]);
+
+  useEffect(() => {
+    if (refundError) {
+      showTxError(
+        'Failed to Claim Refund',
+        refundError,
+        refundHash,
+        refundToastRef.current ?? undefined
+      );
+      refundToastRef.current = null;
+    }
+  }, [refundError, refundHash]);
 
   if (loadingBet || loadingReveal) {
     return (
@@ -83,7 +220,8 @@ export const MarketDetailModal = ({ open, onOpenChange, betId, title }: MarketDe
   const isExpired = Number(betInfo.expiryTime) * 1000 < Date.now();
   const isResolved = betInfo.isResolved;
   const canVote = !isExpired && !isResolved && !hasVoted;
-  const canRequestReveal = isExpired && !isResolved && !revealStatus.pending && address === betInfo.creator;
+  const isDecryptionRequested = revealStatus.pending;
+  const canRequestReveal = isExpired && !isResolved && !isDecryptionRequested && address === betInfo.creator;
   const canClaim = isResolved && hasVoted && !hasClaimed;
   const isTie = isResolved && revealStatus.revealedYes === revealStatus.revealedNo;
 
@@ -170,13 +308,13 @@ export const MarketDetailModal = ({ open, onOpenChange, betId, title }: MarketDe
                   <div className={`p-4 rounded-lg border-2 ${betInfo.yesWon ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-gray-50'}`}>
                     <div className="text-sm text-muted-foreground mb-1">YES Votes</div>
                     <div className="text-xl font-bold text-green-700">
-                      {formatEther(revealStatus.revealedYes)} ETH
+                      {Number(revealStatus.revealedYes)}
                     </div>
                   </div>
                   <div className={`p-4 rounded-lg border-2 ${!betInfo.yesWon && !isTie ? 'border-red-500 bg-red-50' : 'border-gray-200 bg-gray-50'}`}>
                     <div className="text-sm text-muted-foreground mb-1">NO Votes</div>
                     <div className="text-xl font-bold text-red-700">
-                      {formatEther(revealStatus.revealedNo)} ETH
+                      {Number(revealStatus.revealedNo)}
                     </div>
                   </div>
                 </div>
@@ -215,9 +353,9 @@ export const MarketDetailModal = ({ open, onOpenChange, betId, title }: MarketDe
                 <Button
                   onClick={() => requestReveal(betId)}
                   className="w-full"
-                  disabled={requestingReveal}
+                  disabled={requestingReveal || confirmingReveal}
                 >
-                  {requestingReveal && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {(requestingReveal || confirmingReveal) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   <Unlock className="mr-2 h-4 w-4" />
                   Request Decryption
                 </Button>
@@ -227,10 +365,10 @@ export const MarketDetailModal = ({ open, onOpenChange, betId, title }: MarketDe
                 <Button
                   onClick={() => claimPrize(betId)}
                   className="w-full"
-                  disabled={claiming}
+                  disabled={claiming || confirmingClaim}
                   variant="default"
                 >
-                  {claiming && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {(claiming || confirmingClaim) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   <Trophy className="mr-2 h-4 w-4" />
                   Claim Prize
                 </Button>
@@ -240,16 +378,16 @@ export const MarketDetailModal = ({ open, onOpenChange, betId, title }: MarketDe
                 <Button
                   onClick={() => claimRefund(betId)}
                   className="w-full"
-                  disabled={refunding}
+                  disabled={refunding || confirmingRefund}
                   variant="outline"
                 >
-                  {refunding && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {(refunding || confirmingRefund) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Claim Refund
                 </Button>
               )}
             </div>
 
-            {revealStatus.pending && (
+            {isDecryptionRequested && !isResolved && (
               <Alert className="bg-amber-50 border-amber-200">
                 <Clock className="h-4 w-4 text-amber-600" />
                 <AlertDescription className="text-amber-700">

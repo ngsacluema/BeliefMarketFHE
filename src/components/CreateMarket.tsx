@@ -7,18 +7,23 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CalendarIcon, Plus, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useCreateBet, usePlatformStake } from '@/hooks/useBeliefMarket';
 import { useAccount } from 'wagmi';
-import { parseEther } from 'viem';
-import { toast } from 'sonner';
+import {
+  showTxSubmitted,
+  showTxSuccess,
+  showTxError,
+  showWarning,
+  dismissToast,
+} from '@/lib/toast-utils';
 
 export const CreateMarket = () => {
   const { address } = useAccount();
   const { platformStake } = usePlatformStake();
-  const { createBet, isPending, isConfirming, isSuccess, error } = useCreateBet();
+  const { createBet, hash, isPending, isConfirming, isSuccess, error } = useCreateBet();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -26,33 +31,27 @@ export const CreateMarket = () => {
   const [date, setDate] = useState<Date>();
   const [resolution, setResolution] = useState('');
 
-  const handleCreate = async () => {
-    if (!address) {
-      toast.error('Please connect your wallet');
-      return;
+  const toastIdRef = useRef<string | number | null>(null);
+  const prevHashRef = useRef<string | undefined>();
+
+  // Handle transaction hash change (tx submitted)
+  useEffect(() => {
+    if (hash && hash !== prevHashRef.current) {
+      prevHashRef.current = hash;
+      toastIdRef.current = showTxSubmitted(hash);
     }
+  }, [hash]);
 
-    if (!title || !description || !date || !voteStake) {
-      toast.error('Please fill in all fields');
-      return;
-    }
-
-    if (!platformStake) {
-      toast.error('Unable to fetch platform stake');
-      return;
-    }
-
-    try {
-      const betId = `${title.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`;
-      const durationInSeconds = Math.floor((date.getTime() - Date.now()) / 1000);
-
-      if (durationInSeconds < 300) {
-        toast.error('Market duration must be at least 5 minutes');
-        return;
-      }
-
-      await createBet(betId, voteStake, durationInSeconds, platformStake);
-      toast.success('Market created successfully!');
+  // Handle transaction success
+  useEffect(() => {
+    if (isSuccess && hash) {
+      showTxSuccess(
+        'Market Created!',
+        'Your prediction market is now live.',
+        hash,
+        toastIdRef.current ?? undefined
+      );
+      toastIdRef.current = null;
 
       // Reset form
       setTitle('');
@@ -60,10 +59,47 @@ export const CreateMarket = () => {
       setVoteStake('0.005');
       setDate(undefined);
       setResolution('');
-    } catch (err: any) {
-      console.error('Create market error:', err);
-      toast.error(err.message || 'Failed to create market');
     }
+  }, [isSuccess, hash]);
+
+  // Handle transaction error
+  useEffect(() => {
+    if (error) {
+      showTxError(
+        'Failed to Create Market',
+        error,
+        hash,
+        toastIdRef.current ?? undefined
+      );
+      toastIdRef.current = null;
+    }
+  }, [error, hash]);
+
+  const handleCreate = async () => {
+    if (!address) {
+      showWarning('Wallet Not Connected', 'Please connect your wallet first');
+      return;
+    }
+
+    if (!title || !description || !date || !voteStake) {
+      showWarning('Missing Fields', 'Please fill in all required fields');
+      return;
+    }
+
+    if (!platformStake) {
+      showWarning('Loading...', 'Unable to fetch platform stake, please try again');
+      return;
+    }
+
+    const durationInSeconds = Math.floor((date.getTime() - Date.now()) / 1000);
+
+    if (durationInSeconds < 300) {
+      showWarning('Invalid Duration', 'Market duration must be at least 5 minutes');
+      return;
+    }
+
+    const betId = `${title.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`;
+    await createBet(betId, voteStake, durationInSeconds, platformStake);
   };
 
   return (
@@ -194,7 +230,7 @@ export const CreateMarket = () => {
 
             <p className="text-xs text-muted-foreground text-center">
               By creating a market, you agree to stake the platform fee. Markets use FHE to keep all
-              votes encrypted until the official decryption callback.
+              votes encrypted until the official decryption.
             </p>
           </CardContent>
         </Card>
