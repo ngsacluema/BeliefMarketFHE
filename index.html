@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
+    <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
+    <link rel="preconnect" href="https://cdn.zama.org" />
     <title>BeliefMarketFHE - Privacy-Preserving Prediction Markets</title>
     <meta name="description" content="First binary prediction market built on FHE technology. Vote with encrypted weights, maintain privacy, and win from decrypted results." />
     <meta name="author" content="BeliefMarketFHE" />
@@ -22,6 +25,12 @@
 
   <body>
     <div id="root"></div>
+    <!-- Zama FHE Relayer SDK 0.3.0-5 (fhEVM 0.9.1 compatible) -->
+    <script
+      src="https://cdn.zama.org/relayer-sdk-js/0.3.0-5/relayer-sdk-js.umd.cjs"
+      defer
+      crossorigin="anonymous"
+    ></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
