@@ -4,7 +4,7 @@ A decentralized prediction market platform built with Zama's Fully Homomorphic E
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.24-green.svg)](https://soliditylang.org/)
-[![FHE](https://img.shields.io/badge/FHE-Zama%200.5.x-purple.svg)](https://www.zama.ai/)
+[![FHE](https://img.shields.io/badge/FHE-Zama%200.9.1-purple.svg)](https://www.zama.ai/)
 [![Network](https://img.shields.io/badge/Network-Sepolia-orange.svg)](https://sepolia.etherscan.io/)
 [![React](https://img.shields.io/badge/React-18.3-61DAFB.svg)](https://react.dev/)
 
@@ -58,7 +58,7 @@ FHE allows computations to be performed directly on encrypted data without decry
 - **End-to-End Encryption**: Votes are encrypted on the client-side using Zama's FHE SDK
 - **On-Chain Privacy**: Encrypted votes stored on blockchain remain unreadable
 - **Homomorphic Operations**: Vote tallying happens on encrypted data using `FHE.add()`
-- **Selective Decryption**: Only final results are decrypted via Zama Gateway
+- **Self-Relaying Decryption**: Final results decrypted via user-relayed KMS signatures
 
 ### 🏛️ Decentralized Governance
 
@@ -155,39 +155,60 @@ Once the voting deadline passes:
 - Encrypted tallies remain sealed
 - Awaiting decryption request
 
-### Phase 4: Decryption Request
+### Phase 4: Self-Relaying Decryption
 
 ```mermaid
 graph LR
-    A[Market Creator] -->|Calls requestDecryption| B[Smart Contract]
-    B -->|Emits Event| C[Zama Gateway]
-    C -->|Performs Async Decryption| D[KMS Network]
-    D -->|Returns Plaintext| C
-    C -->|Executes Callback| B
-    B -->|Stores Results| E[Resolved State]
+    A[Market Creator] -->|Calls requestTallyReveal| B[Smart Contract]
+    B -->|FHE.makePubliclyDecryptable| C[Marks Ciphertexts]
+    C -->|User Relays| D[FHE.checkSignatures]
+    D -->|Verifies KMS Signatures| E[Decryption Complete]
+    E -->|Stores Results| F[Resolved State]
 ```
 
-**Decryption Process:**
+**Self-Relaying Decryption Process (fhEVM 0.9.1):**
 
-1. Market creator calls `requestDecryption(betId)`
-2. Contract emits `FHE.requestDecryption()` for both `yesVotes` and `noVotes`
-3. Zama Gateway receives the request off-chain
-4. Gateway performs decryption using the FHE key management system
-5. Gateway calls back `resolveTallyCallback()` with plaintext results
-6. Contract stores results and determines winner
+1. Market creator calls `requestTallyReveal(betId)`
+2. Contract calls `FHE.makePubliclyDecryptable()` for both `yesVotes` and `noVotes`
+3. User/relayer fetches decryption from KMS network off-chain
+4. User calls `resolveTally()` with decrypted values and KMS signatures
+5. Contract verifies signatures via `FHE.checkSignatures()`
+6. If valid, contract stores results and determines winner
 
-**Callback Implementation:**
+**Self-Relaying Implementation:**
 ```solidity
-function resolveTallyCallback(
+function requestTallyReveal(string memory betId) external {
+    require(block.timestamp >= bet.expiryTime, "Market not expired");
+    // Mark ciphertexts as publicly decryptable
+    FHE.makePubliclyDecryptable(FHE.toBytes32(bet.yesVotes));
+    FHE.makePubliclyDecryptable(FHE.toBytes32(bet.noVotes));
+    bet.decryptionRequested = true;
+}
+
+function resolveTally(
     string memory betId,
-    uint64 decryptedYesVotes,
-    uint64 decryptedNoVotes
-) public onlyGateway {
-    bets[betId].yesVotesDecrypted = decryptedYesVotes;
-    bets[betId].noVotesDecrypted = decryptedNoVotes;
-    bets[betId].resolved = true;
+    uint64 decryptedYes,
+    uint64 decryptedNo,
+    bytes memory signature
+) external {
+    // Verify KMS signatures
+    bytes32[] memory handles = new bytes32[](2);
+    handles[0] = FHE.toBytes32(bet.yesVotes);
+    handles[1] = FHE.toBytes32(bet.noVotes);
+    require(FHE.checkSignatures(handles, signature), "Invalid signature");
+
+    // Store decrypted results
+    bet.yesVotesDecrypted = decryptedYes;
+    bet.noVotesDecrypted = decryptedNo;
+    bet.resolved = true;
 }
 ```
+
+**Advantages of Self-Relaying:**
+- No dependency on external Oracle/Gateway service availability
+- Users can relay their own decryption requests
+- Lower latency for result resolution
+- More decentralized architecture
 
 ### Phase 5: Prize Distribution
 
@@ -217,7 +238,7 @@ function claimPrize(string memory betId) external {
 | Component | Technology | Version |
 |-----------|-----------|---------|
 | **Language** | Solidity | 0.8.24 |
-| **FHE Library** | @fhevm/solidity | 0.5.x |
+| **FHE Library** | @fhevm/solidity | 0.9.1 |
 | **Framework** | Hardhat | 2.26.3 |
 | **Network** | Ethereum Sepolia | Chain ID 11155111 |
 | **Encryption** | euint64 | 64-bit encrypted integers |
@@ -234,7 +255,7 @@ function claimPrize(string memory betId) external {
 | **Web3 Hooks** | Wagmi | 2.19.1 |
 | **Ethereum Client** | Viem | 2.38.5 |
 | **Wallet Connection** | RainbowKit | 2.2.9 |
-| **FHE SDK** | Zama Relayer SDK | 0.2.0 (CDN) |
+| **FHE SDK** | Zama Relayer SDK | 0.3.0-5 (CDN) |
 | **State Management** | TanStack Query | 5.90.5 |
 
 ### Development Tools
@@ -301,7 +322,7 @@ Before you begin, ensure you have:
 The contract address and ABI are configured in `src/config/contracts.ts`:
 
 ```typescript
-export const BELIEF_MARKET_ADDRESS = '0x35B1c3E1208Cf716d1d3558F30aE5de48f5fe3B4';
+export const BELIEF_MARKET_ADDRESS = '0xBFdD7106B8e5b0F63F510C3508c9b2C3ee752c97';
 export const BELIEF_MARKET_ABI = [ /* ABI array */ ];
 ```
 
@@ -313,7 +334,7 @@ After deploying your own contract, update this file with your new address.
 
 ### Contract: BeliefMarketFHE
 
-**Address (Sepolia)**: `0x35B1c3E1208Cf716d1d3558F30aE5de48f5fe3B4`
+**Address (Sepolia)**: `0xBFdD7106B8e5b0F63F510C3508c9b2C3ee752c97`
 
 ### Core Functions
 
@@ -683,18 +704,40 @@ export async function encryptUint64(
 Run the test suite:
 
 ```bash
-npm test
+# Run all tests
+npm run test:all
+
+# Run main contract tests
+npm run test:belief
+
+# Run FHE operation tests
+npm run test:fhe
 ```
 
 **Test Coverage:**
 
-- ✅ 49 utility tests passing
-- ⚠️ 13 FHE contract tests (require Zama fhEVM setup)
+- ✅ BeliefMarketFHE contract tests (bet creation, voting, resolution, prize distribution)
+- ✅ FHE operation tests (encryption, accumulation, decryption verification)
+- ⚠️ FHE tests require Zama fhEVM mock environment
 
 **Test Files:**
 
-- `test/BeliefMarketFHE.test.cjs` - Contract unit tests
-- `test/utils.test.cjs` - Utility function tests
+- `test/BeliefMarketFHE.test.js` - Main contract unit tests
+  - Bet creation and validation
+  - FHE encrypted voting
+  - Tally decryption flow
+  - Prize distribution
+  - Tie handling and refunds
+  - View functions
+  - Owner-only functions
+- `test/FHEOperations.test.js` - FHE-specific operation tests
+  - `FHE.fromExternal()` - Input decryption with proof verification
+  - `FHE.add()` - Encrypted vote accumulation
+  - `FHE.makePubliclyDecryptable()` - Decryption preparation
+  - `FHE.checkSignatures()` - Decryption verification
+  - `FHE.allowThis()` - Permission management
+  - `FHE.toBytes32()` - Handle conversion
+  - Edge cases (zero votes, large numbers)
 
 ---
 
@@ -824,17 +867,17 @@ require(durationInSeconds <= 30 days, "Duration too long");
 
 #### Potential Risks
 
-⚠️ **Gateway Dependency**: Decryption relies on Zama Gateway availability
+⚠️ **KMS Dependency**: Decryption relies on Zama KMS network for signatures
 
-- **Mitigation**: Implement timeout fallback for refunds
+- **Mitigation**: Self-relaying pattern allows any user to relay decryption
 
 ⚠️ **Front-Running**: Market resolution timing can be observed
 
 - **Mitigation**: Use VRF for unpredictable resolution triggers
 
-⚠️ **Oracle Problem**: Result verification depends on creator honesty
+⚠️ **Signature Verification**: KMS signatures must be verified on-chain
 
-- **Mitigation**: Implement dispute mechanism or integrate Chainlink oracles
+- **Mitigation**: `FHE.checkSignatures()` ensures cryptographic verification
 
 ### Frontend Security
 
@@ -1006,12 +1049,13 @@ SOFTWARE.
 
 ## 📊 Project Stats
 
-- **Contract Address**: `0x35B1c3E1208Cf716d1d3558F30aE5de48f5fe3B4`
+- **Contract Address**: `0xBFdD7106B8e5b0F63F510C3508c9b2C3ee752c97`
 - **Network**: Ethereum Sepolia Testnet
+- **FHE Version**: fhEVM 0.9.1 (Self-Relaying)
 - **Lines of Code**: ~5,000+
-- **Test Coverage**: 49 passing tests
+- **Test Suites**: 2 (BeliefMarketFHE + FHE Operations)
 - **Version**: 1.0.0
-- **Last Updated**: October 31, 2025
+- **Last Updated**: December 8, 2025
 
 ---
 
